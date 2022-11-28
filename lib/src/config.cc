@@ -101,8 +101,8 @@ WebDBConfig WebDBConfig::ReadFrom(std::string_view args_json) {
                 config.filesystem.allow_full_http_reads = fs["allowFullHTTPReads"].GetBool();
             }
         }
-        if (doc.HasMember("access_mode") && doc["access_mode"].IsString()) {
-            config.accessMode = static_cast<uint32_t>(ParseAccessMode(doc["access_mode"].GetString()));
+        if (doc.HasMember("accessMode") && doc["accessMode"].IsString()) {
+            config.accessMode = static_cast<uint32_t>(ParseAccessMode(doc["accessMode"].GetString()));
         }
     }
     if (!config.query.cast_bigint_to_double.has_value()) {
