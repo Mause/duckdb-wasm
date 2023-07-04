@@ -1,5 +1,18 @@
+import { SourceData } from "@aws-sdk/types";
 import {S3Config} from "../bindings";
-import {sha256} from "js-sha256";
+import { Sha256 } from '@aws-crypto/sha256-js';
+
+function sha256(x: SourceData): string {
+    const hash = new Sha256();
+    hash.update(x);
+    return toHex(hash.digestSync());
+}
+
+function hmacSha256(key: SourceData, data: SourceData): Uint8Array {
+    const hash = new Sha256(key);
+    hash.update(data);
+    return hash.digestSync();
+}
 
 export interface S3Params {
     url: string,
@@ -128,26 +141,15 @@ export function createS3Headers(params: S3Params, payloadParams : S3PayloadParam
 
     // ts-ignore's because library can accept array buffer as key, but TS arg is incorrect
     const signKey = "AWS4" + params.secretAccessKey;
-    const kDate = sha256.hmac.arrayBuffer(signKey, params.dateNow);
-
-    // Note, js-sha256 has a bug in the TS interface that only supports strings as keys, while we need a bytearray
-    // as key. PR is open but unmerged: https://github.com/emn178/js-sha256/pull/25
-    // eslint-disable-next-line
-    // @ts-ignore
-    const kRegion = sha256.hmac.arrayBuffer(kDate, params.region);
-    // eslint-disable-next-line
-    // @ts-ignore
-    const kService = sha256.hmac.arrayBuffer(kRegion, params.service,);
-    // eslint-disable-next-line
-    // @ts-ignore
-    const signingKey = sha256.hmac.arrayBuffer(kService, "aws4_request");
-    // eslint-disable-next-line
-    // @ts-ignore
-    const signature = sha256.hmac(signingKey, stringToSign);
+    const kDate = hmacSha256(signKey, params.dateNow);
+    const kRegion = hmacSha256(kDate, params.region);
+    const kService = hmacSha256(kRegion, params.service,);
+    const signingKey = hmacSha256(kService, "aws4_request");
+    const signature = hmacSha256(signingKey, stringToSign);
 
     res.set("Authorization", "AWS4-HMAC-SHA256 Credential=" + params.accessKeyId + "/" + params.dateNow + "/" + params.region + "/" +
         params.service + "/aws4_request, SignedHeaders=" + signedHeaders +
-        ", Signature=" + signature);
+        ", Signature=" + toHex(signature));
 
     return res;
 }
@@ -156,9 +158,13 @@ const createS3HeadersFromS3Config = function (config : S3Config | undefined, url
     const params = getS3Params(config, url, method);
     const payloadParams = {
         contentType: contentType,
-        contentHash: payload ? sha256.hex(payload!) : null
+        contentHash: payload ? sha256(payload!) : null
     } as S3PayloadParams;
     return createS3Headers(params, payloadParams);
+}
+
+function toHex(signature: Uint8Array) {
+    return Buffer.from(signature).toString('hex');
 }
 
 export function addS3Headers(xhr: XMLHttpRequest, config : S3Config | undefined, url : string, method: string, contentType: string | null = null, payload : Uint8Array | null = null) {
